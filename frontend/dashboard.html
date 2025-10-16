@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Sensor Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            font-size: 0.9em;
+            backdrop-filter: blur(10px);
+        }
+
+        .status.online {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .status.offline {
+            background: rgba(244, 67, 54, 0.3);
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .icon {
+            font-size: 2em;
+            margin-right: 15px;
+        }
+
+        .card-title {
+            font-size: 0.9em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .card-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+
+        .card-unit {
+            font-size: 0.5em;
+            color: #999;
+            font-weight: normal;
+        }
+
+        .card-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+
+        .temp-card { border-left: 4px solid #ff6b6b; }
+        .humidity-card { border-left: 4px solid #4ecdc4; }
+        .air-quality-card { border-left: 4px solid #95e1d3; }
+
+        .chart-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 300px;
+        }
+
+        .alert {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background: white;
+            color: #667eea;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .last-update {
+            color: white;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 1.8em; }
+            .card-value { font-size: 2em; }
+            .chart-wrapper { height: 250px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌡️ IoT Sensor Dashboard</h1>
+            <div class="status" id="connectionStatus">● Connecting...</div>
+        </header>
+
+        <div class="controls">
+            <button onclick="fetchLatestData()">🔄 Refresh Data</button>
+            <button onclick="toggleAutoRefresh()">⏱️ <span id="autoRefreshText">Enable</span> Auto-Refresh</button>
+            <button onclick="clearData()">🗑️ Clear History</button>
+        </div>
+
+        <div id="alertContainer"></div>
+
+        <div class="cards">
+            <div class="card temp-card">
+                <div class="card-header">
+                    <div class="icon">🌡️</div>
+                    <div class="card-title">Temperature</div>
+                </div>
+                <div class="card-value" id="tempValue">--<span class="card-unit">°C</span></div>
+                <div class="card-details">
+                    <div>Min: <strong id="tempMin">--</strong></div>
+                    <div>Avg: <strong id="tempAvg">--</strong></div>
+                    <div>Max: <strong id="tempMax">--</strong></div>
+                </div>
+            </div>
+
+            <div class="card humidity-card">
+                <div class="card-header">
+                    <div class="icon">💧</div>
+                    <div class="card-title">Humidity</div>
+                </div>
+                <div class="card-value" id="humidityValue">--<span class="card-unit">%</span></div>
+                <div class="card-details">
+                    <div>Min: <strong id="humidityMin">--</strong></div>
+                    <div>Avg: <strong id="humidityAvg">--</strong></div>
+                    <div>Max: <strong id="humidityMax">--</strong></div>
+                </div>
+            </div>
+
+            <div class="card air-quality-card">
+                <div class="card-header">
+                    <div class="icon">🌬️</div>
+                    <div class="card-title">Air Quality</div>
+                </div>
+                <div class="card-value" id="airQualityValue">--<span class="card-unit">%</span></div>
+                <div class="card-details">
+                    <div>Min: <strong id="airQualityMin">--</strong></div>
+                    <div>Avg: <strong id="airQualityAvg">--</strong></div>
+                    <div>Max: <strong id="airQualityMax">--</strong></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <h3>📈 Real-time Sensor Trends</h3>
+            <div class="chart-wrapper">
+                <canvas id="sensorChart"></canvas>
+            </div>
+        </div>
+
+        <div class="last-update">
+            Last updated: <span id="lastUpdate">Never</span>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        let autoRefreshInterval = null;
+        let chart = null;
+
+        // Initialize Chart
+        const ctx = document.getElementById('sensorChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: '#ff6b6b',
+                        backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: [],
+                        borderColor: '#4ecdc4',
+                        backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Air Quality (%)',
+                        data: [],
+                        borderColor: '#95e1d3',
+                        backgroundColor: 'rgba(149, 225, 211, 0.1)',
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        async function fetchLatestData() {
+            try {
+                const response = await fetch(`${API_URL}/latest-reading`);
+                const result = await response.json();
+
+                if (result.status === 'success' && result.data) {
+                    updateDashboard(result.data);
+                    updateConnectionStatus(true);
+                } else {
+                    showAlert('No data available yet. Waiting for ESP32...', 'error');
+                    updateConnectionStatus(false);
+                }
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                showAlert('Cannot connect to backend. Is the server running?', 'error');
+                updateConnectionStatus(false);
+            }
+        }
+
+        async function fetchStatistics() {
+            try {
+                const response = await fetch(`${API_URL}/statistics`);
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    updateStatistics(result);
+                }
+            } catch (error) {
+                console.error('Error fetching statistics:', error);
+            }
+        }
+
+        async function fetchChartData() {
+            try {
+                const response = await fetch(`${API_URL}/readings?limit=20`);
+                const result = await response.json();
+
+                if (result.status === 'success' && result.readings.length > 0) {
+                    updateChart(result.readings);
+                }
+            } catch (error) {
+                console.error('Error fetching chart data:', error);
+            }
+        }
+
+        function updateDashboard(data) {
+            document.getElementById('tempValue').innerHTML = 
+                `${data.temperature.toFixed(1)}<span class="card-unit">°C</span>`;
+            document.getElementById('humidityValue').innerHTML = 
+                `${data.humidity.toFixed(1)}<span class="card-unit">%</span>`;
+            document.getElementById('airQualityValue').innerHTML = 
+                `${data.air_quality.toFixed(1)}<span class="card-unit">%</span>`;
+            
+            document.getElementById('lastUpdate').textContent = 
+                new Date(data.timestamp).toLocaleString();
+
+            fetchStatistics();
+            fetchChartData();
+        }
+
+        function updateStatistics(stats) {
+            document.getElementById('tempMin').textContent = stats.temperature.min + '°C';
+            document.getElementById('tempAvg').textContent = stats.temperature.avg + '°C';
+            document.getElementById('tempMax').textContent = stats.temperature.max + '°C';
+
+            document.getElementById('humidityMin').textContent = stats.humidity.min + '%';
+            document.getElementById('humidityAvg').textContent = stats.humidity.avg + '%';
+            document.getElementById('humidityMax').textContent = stats.humidity.max + '%';
+
+            document.getElementById('airQualityMin').textContent = stats.air_quality.min + '%';
+            document.getElementById('airQualityAvg').textContent = stats.air_quality.avg + '%';
+            document.getElementById('airQualityMax').textContent = stats.air_quality.max + '%';
+        }
+
+        function updateChart(readings) {
+            const labels = readings.map(r => {
+                const date = new Date(r.timestamp);
+                return date.toLocaleTimeString();
+            });
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = readings.map(r => r.temperature);
+            chart.data.datasets[1].data = readings.map(r => r.humidity);
+            chart.data.datasets[2].data = readings.map(r => r.air_quality);
+            chart.update();
+        }
+
+        function updateConnectionStatus(isOnline) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (isOnline) {
+                statusEl.textContent = '● Online';
+                statusEl.className = 'status online';
+            } else {
+                statusEl.textContent = '● Offline';
+                statusEl.className = 'status offline';
+            }
+        }
+
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert ${type}`;
+            alert.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(alert);
+
+            setTimeout(() => alert.remove(), 5000);
+        }
+
+        function toggleAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                document.getElementById('autoRefreshText').textContent = 'Enable';
+                showAlert('Auto-refresh disabled', 'success');
+            } else {
+                autoRefreshInterval = setInterval(fetchLatestData, 5000);
+                document.getElementById('autoRefreshText').textContent = 'Disable';
+                showAlert('Auto-refresh enabled (every 5 seconds)', 'success');
+            }
+        }
+
+        async function clearData() {
+            if (confirm('Are you sure you want to clear all data?')) {
+                try {
+                    await fetch(`${API_URL}/readings`, { method: 'DELETE' });
+                    showAlert('Data cleared successfully', 'success');
+                    location.reload();
+                } catch (error) {
+                    showAlert('Error clearing data', 'error');
+                }
+            }
+        }
+
+        // Initial data fetch
+        fetchLatestData();
+        
+        // Auto-refresh every 10 seconds by default
+        autoRefreshInterval = setInterval(fetchLatestData, 10000);
+        document.getElementById('autoRefreshText').textContent = 'Disable';
+    </script>
+</body>
+</html>
