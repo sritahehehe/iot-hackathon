@@ -202,6 +202,7 @@
             <button onclick="fetchLatestData()">🔄 Refresh Data</button>
             <button onclick="toggleAutoRefresh()">⏱️ <span id="autoRefreshText">Enable</span> Auto-Refresh</button>
             <button onclick="clearData()">🗑️ Clear History</button>
+            <button onclick="injectTestReading()">🔬 Inject Test Data</button>
         </div>
 
         <div id="alertContainer"></div>
@@ -260,8 +261,10 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
-        let autoRefreshInterval = null;
+    // Use the same origin that served the page so the dashboard works when opened
+    // via http://<pc-ip>:8000/dashboard or http://localhost:8000/dashboard
+    const API_URL = window.location.origin;
+    let autoRefreshInterval = null;
         let chart = null;
 
         // Initialize Chart
@@ -444,11 +447,38 @@
             }
         }
 
+        // Inject a sample reading to help quickly test the dashboard without ESP32
+        async function injectTestReading() {
+            try {
+                const sample = {
+                    device_id: 'INJECT_TEST',
+                    temperature: (20 + Math.random()*10).toFixed(2),
+                    humidity: (30 + Math.random()*50).toFixed(2),
+                    air_quality: (Math.random()*50).toFixed(2),
+                    air_quality_raw: Math.floor(200 + Math.random()*2000)
+                };
+                const resp = await fetch(`${API_URL}/sensor-data`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(sample)
+                });
+                if (resp.ok) {
+                    showAlert('Injected test reading', 'success');
+                    // Refresh dashboard to show the injected reading
+                    fetchLatestData();
+                } else {
+                    showAlert('Failed to inject reading', 'error');
+                }
+            } catch (e) {
+                showAlert('Error injecting reading: ' + e.message, 'error');
+            }
+        }
+
         // Initial data fetch
         fetchLatestData();
         
-        // Auto-refresh every 10 seconds by default
-        autoRefreshInterval = setInterval(fetchLatestData, 10000);
+    // Auto-refresh every 5 seconds by default (matches ESP posting frequency)
+    autoRefreshInterval = setInterval(fetchLatestData, 5000);
         document.getElementById('autoRefreshText').textContent = 'Disable';
     </script>
 </body>
