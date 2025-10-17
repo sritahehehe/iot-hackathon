@@ -363,6 +363,118 @@
             opacity: 0.9;
         }
 
+        /* --- Mini Area Map (scoped) --- */
+        .mini-map-section {
+            margin-top: 20px;
+        }
+
+        .mini-map-card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .mini-map-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #333;
+        }
+
+        .mini-map-wrapper {
+            position: relative;
+            height: 220px;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #e8f0ff 0%, #e7ffe7 100%);
+            overflow: hidden;
+            border: 1px solid #e5e7eb;
+        }
+
+        .poi {
+            position: absolute;
+            font-size: 26px;
+            line-height: 1;
+            filter: drop-shadow(0 2px 2px rgba(0,0,0,0.15));
+            user-select: none;
+        }
+
+        .poi.factory { left: 18px; bottom: 16px; }
+        .poi.house-1 { right: 24px; top: 20px; }
+        .poi.house-2 { right: 60px; bottom: 40px; }
+        .poi.house-3 { left: 140px; top: 28px; }
+
+        .mini-road {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 6px;
+            background: repeating-linear-gradient(90deg, #bdbdbd 0 18px, #d6d6d6 18px 36px);
+            transform: translateY(-50%);
+            opacity: 0.8;
+        }
+
+        .danger-overlay {
+            position: absolute;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            background: radial-gradient(circle at center, rgba(220,53,69,0.35) 0%, rgba(220,53,69,0.25) 45%, rgba(220,53,69,0.12) 70%, rgba(220,53,69,0) 75%);
+            border: 1px dashed rgba(220,53,69,0.5);
+            left: 60px;
+            bottom: 20px;
+            display: none;
+        }
+
+        .danger-overlay.active { display: block; animation: pulse 1.8s infinite; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            60% { transform: scale(1.06); opacity: 0.85; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .mini-map-legend {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-top: 12px;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .legend-factory { background: #6b7280; }
+        .legend-house { background: #4caf50; }
+        .legend-danger { background: #dc3545; }
+
+        .live-reading-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            color: #111827;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.85em;
+        }
+
+        .live-reading-badge.danger {
+            background: #ffe6e9;
+            border-color: #f5c2c7;
+            color: #b4232c;
+        }
+
         @media (max-width: 768px) {
             h1 { font-size: 1.8em; }
             .card-value { font-size: 2em; }
@@ -446,6 +558,27 @@
 
         <div class="last-update">
             Last updated: <span id="lastUpdate">Never</span>
+        </div>
+
+        <!-- Mini Area Map Section (non-intrusive) -->
+        <div class="mini-map-section">
+            <div class="mini-map-card">
+                <div class="mini-map-title">🗺 Small Area Map</div>
+                <div class="mini-map-wrapper" id="miniMap">
+                    <div class="mini-road"></div>
+                    <div class="poi factory" title="Factory">🏭</div>
+                    <div class="poi house-1" title="House">🏠</div>
+                    <div class="poi house-2" title="House">🏠</div>
+                    <div class="poi house-3" title="House">🏠</div>
+                    <div class="danger-overlay" id="dangerOverlay"></div>
+                </div>
+                <div class="mini-map-legend">
+                    <span class="legend-dot legend-factory"></span> Factory
+                    <span class="legend-dot legend-house" style="margin-left:12px;"></span> Houses
+                    <span class="legend-dot legend-danger" style="margin-left:12px;"></span> Danger Zone
+                    <span style="margin-left:auto;" class="live-reading-badge" id="liveReadingBadge">Live: --</span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -647,6 +780,9 @@
 
             fetchStatistics();
             fetchChartData();
+
+            // Update mini-map visualization
+            updateMiniMap(data);
         }
 
         function updateStatistics(stats) {
@@ -661,6 +797,52 @@
             document.getElementById('airQualityMin').textContent = stats.air_quality.min + '%';
             document.getElementById('airQualityAvg').textContent = stats.air_quality.avg + '%';
             document.getElementById('airQualityMax').textContent = stats.air_quality.max + '%';
+        }
+
+        // ---------------- Mini Map Logic ----------------
+        function getDangerAssessment(data) {
+            if (!currentSettings) return { danger: false };
+
+            const breaches = [];
+            if (data.temperature > currentSettings.temp_max) {
+                breaches.push({ sensor: 'Temperature', value: data.temperature, threshold: currentSettings.temp_max, type: 'high' });
+            }
+            if (data.humidity > currentSettings.humidity_max) {
+                breaches.push({ sensor: 'Humidity', value: data.humidity, threshold: currentSettings.humidity_max, type: 'high' });
+            }
+            if (data.air_quality > currentSettings.air_quality_max) {
+                breaches.push({ sensor: 'Air Quality', value: data.air_quality, threshold: currentSettings.air_quality_max, type: 'high' });
+            }
+
+            if (breaches.length === 0) return { danger: false };
+
+            // Choose the most severe by percentage over threshold
+            let worst = breaches[0];
+            let worstRatio = worst.value / (worst.threshold || 1);
+            for (let i = 1; i < breaches.length; i++) {
+                const ratio = breaches[i].value / (breaches[i].threshold || 1);
+                if (ratio > worstRatio) { worst = breaches[i]; worstRatio = ratio; }
+            }
+            return { danger: true, worst };
+        }
+
+        function updateMiniMap(data) {
+            const overlay = document.getElementById('dangerOverlay');
+            const badge = document.getElementById('liveReadingBadge');
+            if (!overlay || !badge) return;
+
+            // Live badge text prefers the worst breach if any, else air quality as a representative
+            const assess = getDangerAssessment(data);
+            if (assess.danger) {
+                overlay.classList.add('active');
+                badge.classList.add('danger');
+                const w = assess.worst;
+                badge.textContent = w.sensor + ': ' + w.value.toFixed(1) + ' (>' + w.threshold.toFixed(1) + ')';
+            } else {
+                overlay.classList.remove('active');
+                badge.classList.remove('danger');
+                badge.textContent = 'Live AQ: ' + (data.air_quality != null ? data.air_quality.toFixed(1) + '%' : '--');
+            }
         }
 
         function updateChart(readings) {
